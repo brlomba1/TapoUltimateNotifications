@@ -18,9 +18,13 @@ blueprint:
     siren_entity:
       name: Camera Siren Entity
       selector: { entity: { filter: [{ domain: siren }] } }
-    notify_device:
-      name: Mobile App Device
-      selector: { device: { filter: [{ integration: mobile_app }] } }
+    notify_devices:
+      name: Mobile App Devices
+      description: Select one or more Android devices running the Home Assistant Companion app.
+      selector:
+        device:
+          filter: [{ integration: mobile_app }]
+          multiple: true
     notification_title:
       name: Notification Title
       description: Optional. Leave blank to omit the title.
@@ -49,6 +53,7 @@ blueprint:
       selector: { text: {} }
 
 variables:
+  target_devices: !input notify_devices
   snapshot_file: !input snapshot_filename
   tapo_id: !input tapo_device_id
   privacy_id: !input privacy_action_id
@@ -77,21 +82,23 @@ actions:
           - action: camera.snapshot
             target: { entity_id: !input camera_entity }
             data: { filename: "/config/www/{{ snapshot_file }}" }
-          - domain: mobile_app
-            type: notify
-            device_id: !input notify_device
-            title: !input notification_title
-            message: !input notification_message
-            data:
-              ttl: 0
-              priority: high
-              image: "/local/{{ snapshot_file }}?v={{ now().timestamp() | int }}"
-              tag: "{{ privacy_id | lower }}_{{ now().timestamp() | int }}"
-              clickAction: "{{ tapo_intent }}"
-              actions:
-                - { action: URI, title: View, uri: "{{ tapo_intent }}" }
-                - { action: "{{ privacy_id }}", title: Privacy }
-                - { action: "{{ siren_id }}", title: Siren }
+          - repeat:
+              for_each: "{{ target_devices }}"
+              sequence:
+                - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+                  data:
+                    title: !input notification_title
+                    message: !input notification_message
+                    data:
+                      ttl: 0
+                      priority: high
+                      image: "/local/{{ snapshot_file }}?v={{ now().timestamp() | int }}"
+                      tag: "{{ privacy_id | lower }}_{{ now().timestamp() | int }}"
+                      clickAction: "{{ tapo_intent }}"
+                      actions:
+                        - { action: URI, title: View, uri: "{{ tapo_intent }}" }
+                        - { action: "{{ privacy_id }}", title: Privacy }
+                        - { action: "{{ siren_id }}", title: Siren }
       - conditions: { condition: trigger, id: enable_privacy }
         sequence:
           - action: switch.turn_on
