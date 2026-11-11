@@ -1,0 +1,105 @@
+blueprint:
+  name: Tapo Camera - Ultimate Rich Notifications
+  description: >
+    Sends a high-priority Android notification with a camera snapshot, a deep-link 
+    to open the camera's live view in the Tapo app, and actionable buttons to turn 
+    on Privacy mode or trigger the Siren. See https://github.com/danwig/tapo-device-id-lookup for device ID instructions.
+  domain: automation
+  input:
+    person_sensor:
+      name: Person Detection Sensor
+      selector: { entity: { filter: [{ domain: binary_sensor }] } }
+    camera_entity:
+      name: Camera Entity
+      selector: { entity: { filter: [{ domain: camera }] } }
+    privacy_switch:
+      name: Camera Privacy Mode Switch
+      selector: { entity: { filter: [{ domain: switch }] } }
+    siren_entity:
+      name: Camera Siren Entity
+      selector: { entity: { filter: [{ domain: siren }] } }
+    notify_device:
+      name: Mobile App Device
+      selector: { device: { filter: [{ integration: mobile_app }] } }
+    notification_title:
+      name: Notification Title
+      description: Optional. Leave blank to omit the title.
+      default: ""
+      selector: { text: {} }
+    notification_message:
+      name: Notification Message
+      description: Optional. Leave blank if you only want a title or snapshot.
+      default: ""
+      selector: { text: {} }
+    snapshot_filename:
+      name: Snapshot File Name
+      description: "Example: CameraName_Snapshot.jpg"
+      selector: { text: {} }
+    tapo_device_id:
+      name: Tapo Device ID
+      description: See https://github.com/danwig/tapo-device-id-lookup
+      selector: { text: {} }
+    privacy_action_id:
+      name: Unique Privacy Action ID
+      description: "Example: CAMERANAME_PRIVACY"
+      selector: { text: {} }
+    siren_action_id:
+      name: Unique Siren Action ID
+      description: "Example: CAMERANAME_SIREN"
+      selector: { text: {} }
+
+variables:
+  snapshot_file: !input snapshot_filename
+  tapo_id: !input tapo_device_id
+  privacy_id: !input privacy_action_id
+  siren_id: !input siren_action_id
+  tapo_intent: "intent:#Intent;action=android.intent.action.VIEW;component=com.tplink.iot/com.tplink.iot.view.notification.NotificationClickActivity;S.deviceId={{ tapo_id }};S.msgType=Motion;S.hasCloudVideo=false;end"
+
+triggers:
+  - trigger: state
+    entity_id: !input person_sensor
+    from: "off"
+    to: "on"
+    id: person_detected
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data: { action: "{{ privacy_id }}" }
+    id: enable_privacy
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data: { action: "{{ siren_id }}" }
+    id: trigger_siren
+
+actions:
+  - choose:
+      - conditions: { condition: trigger, id: person_detected }
+        sequence:
+          - action: camera.snapshot
+            target: { entity_id: !input camera_entity }
+            data: { filename: "/config/www/{{ snapshot_file }}" }
+          - domain: mobile_app
+            type: notify
+            device_id: !input notify_device
+            title: !input notification_title
+            message: !input notification_message
+            data:
+              ttl: 0
+              priority: high
+              image: "/local/{{ snapshot_file }}?v={{ now().timestamp() | int }}"
+              tag: "{{ privacy_id | lower }}_{{ now().timestamp() | int }}"
+              clickAction: "{{ tapo_intent }}"
+              actions:
+                - { action: URI, title: View, uri: "{{ tapo_intent }}" }
+                - { action: "{{ privacy_id }}", title: Privacy }
+                - { action: "{{ siren_id }}", title: Siren }
+      - conditions: { condition: trigger, id: enable_privacy }
+        sequence:
+          - action: switch.turn_on
+            target: { entity_id: !input privacy_switch }
+      - conditions: { condition: trigger, id: trigger_siren }
+        sequence:
+          - action: siren.turn_on
+            target: { entity_id: !input siren_entity }
+
+mode: parallel
+max: 5
