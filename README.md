@@ -2,7 +2,7 @@ Description:
 Ultimate rich notifications for Tapo cameras in Home Assistant
 
 Features:
--Rich Notification snapshot<br>
+-Rich Notification snapshot
 -Direct Link - clicking the notification opens to the camera live feed
 -Toggle on siren from notification
 -Toggle on privacy from notification
